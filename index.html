@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CIT (Compound Identity Test)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0; padding: 0;
+      background: #f5f5f5;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    header {
+      background: #0066cc;
+      color: white;
+      width: 100%;
+      padding: 20px;
+      text-align: center;
+    }
+    .container {
+      width: 90%;
+      max-width: 800px;
+      margin: 20px auto;
+      background: white;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border-radius: 8px;
+    }
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .btn {
+      padding: 10px 20px;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .btn:hover {
+      background: #005bb5;
+    }
+    .question {
+      margin-bottom: 20px;
+    }
+    .options button {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      text-align: left;
+      background: #e0e0e0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .options button:hover {
+      background: #d5d5d5;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>CIT (Compound Identity Test)</h1>
+  <p>Discover your identity by taking one or more component tests.</p>
+</header>
+
+<div class="container">
+  <div class="btn-group">
+    <button class="btn" id="btn-gender">Gender Identity Test</button>
+    <button class="btn" id="btn-romantic">Romantic Orientation Test</button>
+    <button class="btn" id="btn-sexual">Sexual Orientation Test</button>
+    <button class="btn" id="btn-full">Full Test</button>
+  </div>
+  <div id="quiz-area"></div>
+</div>
+
+<script>
+// ----------------------
+// Global Variables to Save Results
+// ----------------------
+let finalGender = "";
+let finalSexual = "";
+let finalRomantic = "";
+let finalDemiSex = false;
+let finalDemiRom = false;
+
+// Save result HTML for each component test
+let savedGenderResultHTML = "";
+let savedRomanticResultHTML = "";
+let savedSexualResultHTML = "";
+
+// ----------------------
+// Utility Functions
+// ----------------------
+function clearQuizArea() {
+  document.getElementById("quiz-area").innerHTML = "";
+}
+
+// Formats results as:
+// "Your [test] result is: [result] (n points)"
+// "Other matches: [Orientation] (n points)"
+function renderResults(testLabel, chosenOutcome, chosenPoints, topThree, demi) {
+  let html = `<h3>Your ${testLabel} result is: ${demi ? "Demi-" : ""}${chosenOutcome} (${chosenPoints} points)</h3>`;
+  let others = topThree.slice(1).filter(item => item[1] >= 1);
+  if (others.length > 0) {
+    html += `<p>Other matches:<br>`;
+    others.forEach(item => {
+      html += `${demi ? "Demi-" : ""}${item[0]} (${item[1]} points)<br>`;
+    });
+    html += `</p>`;
+  }
+  return html;
+}
+
+// ----------------------
+// Core Quiz Engine (Common for all tests)
+// ----------------------
+
+// Processes a test given an array of questions, a points object, and extraData.
+function runTest(questions, points, extraData, callback) {
+  let currentQuestionIndex = 0;
+  let answersGiven = {};
+  let userSex = extraData.userSex || null; // used for gender test
+
+  function showQuestion() {
+    if (currentQuestionIndex >= questions.length) {
+      callback(points);
+      return;
+    }
+    const q = questions[currentQuestionIndex];
+    // If a condition exists, check it.
+    if (q.condition) {
+      const cond = q.condition;
+      const prevAnswer = answersGiven[cond.question_id];
+      let valid = Array.isArray(cond.value) ? cond.value.includes(prevAnswer) : (prevAnswer === cond.value);
+      if (!valid) {
+        currentQuestionIndex++;
+        showQuestion();
+        return;
+      }
+    }
+    clearQuizArea();
+    const area = document.getElementById("quiz-area");
+    const container = document.createElement("div");
+    container.classList.add("question");
+    container.innerHTML = `<h3>${q.text}</h3>`;
+    const optionsDiv = document.createElement("div");
+    optionsDiv.classList.add("options");
+    const options = Object.keys(q.answers);
+    options.forEach((optionText, index) => {
+      const btn = document.createElement("button");
+      btn.textContent = (index + 1) + ". " + optionText;
+      btn.onclick = () => {
+        if (q.id) {
+          answersGiven[q.id] = optionText;
+          if (q.id === "sex") {
+            userSex = optionText;
+            extraData.userSex = userSex;
+          }
+        }
+        let target = q.answers[optionText];
+        let resolved;
+        if (target && typeof target === "object" && !Array.isArray(target)) {
+          resolved = target[userSex];
+        } else {
+          resolved = target;
+        }
+        if (Array.isArray(resolved)) {
+          resolved.forEach(outcome => { points[outcome] += 1; });
+        } else if (typeof resolved === "string") {
+          points[resolved] += 1;
+        }
+        currentQuestionIndex++;
+        showQuestion();
+      };
+      optionsDiv.appendChild(btn);
+    });
+    container.appendChild(optionsDiv);
+    area.appendChild(container);
+  }
+  showQuestion();
+}
+
+// Tie-breaker: if the top two outcomes are tied, let the user choose.
+function breakTie(sortedOutcomes, label, demi, callback) {
+  clearQuizArea();
+  const area = document.getElementById("quiz-area");
+  const container = document.createElement("div");
+  container.innerHTML = `<h3>There's a tie for the top spot in the ${label} test.</h3>
+    <p>Please choose which one should be number 1:</p>`;
+  [0, 1].forEach(i => {
+    const outcome = sortedOutcomes[i][0];
+    const score = sortedOutcomes[i][1];
+    const btn = document.createElement("button");
+    btn.textContent = (demi ? "Demi-" : "") + outcome + " (" + score + ")";
+    btn.onclick = () => callback(outcome);
+    container.appendChild(btn);
+  });
+  area.appendChild(container);
+}
+
+// Displays top three outcomes (with tie-breaker if necessary) before final callback.
+function showResults(points, label, demi, callback) {
+  let sortedOutcomes = Object.entries(points).sort((a, b) => b[1] - a[1]);
+  const topThree = sortedOutcomes.slice(0, 3);
+  if (topThree.length >= 2 && topThree[0][1] === topThree[1][1]) {
+    breakTie(topThree, label, demi, (chosenOutcome) => {
+      callback(chosenOutcome, topThree);
+    });
+  } else {
+    callback(topThree[0][0], topThree);
+  }
+}
+
+// ----------------------
+// Test Data for Each Component
+// ----------------------
+
+// Gender Identity Test Data
+const gender_points = {
+  "Cis male": 0,
+  "Cis female": 0,
+  "Gender fluid": 0,
+  "Non-binary": 0,
+  "Transfem": 0,
+  "Transmasc": 0,
+  "Intersex": 0,
+  "Agender": 0
+};
+
+const gender_questions = [
+  {
+    id: "sex",
+    text: "What is your sex?",
+    answers: {
+      "Male": null,
+      "Female": null,
+      "Intersex": null
+    }
+  },
+  {
+    id: "identity_matches_sex",
+    text: "The sex I was assigned at birth truly and wholly matches and reflects how I perceive my gender identity.",
+    answers: {
+      "Yes": {
+        "Male": "Cis male",
+        "Female": "Cis female",
+        "Intersex": "Intersex"
+      },
+      "No": {
+        "Male": ["Gender fluid", "Non-binary", "Transfem", "Agender"],
+        "Female": ["Gender fluid", "Non-binary", "Transmasc", "Agender"],
+        "Intersex": ["Gender fluid", "Non-binary", "Transfem", "Transmasc", "Agender"]
+      }
+    }
+  },
+  {
+    text: "I don't want to express my gender identity in ways that highlight the gender stereotypes in our society.",
+    answers: {
+      "True": ["Non-binary", "Agender"],
+      "False": null
+    }
+  },
+  {
+    text: "Even when I was younger, I felt my gender identity did not match the sex I was assigned at birth.",
+    condition: {
+      question_id: "identity_matches_sex",
+      value: "No"
+    },
+    answers: {
+      "True": {
+        "Male": ["Gender fluid", "Non-binary", "Transfem", "Agender"],
+        "Female": ["Gender fluid", "Non-binary", "Transmasc", "Agender"],
+        "Intersex": ["Gender fluid", "Non-binary", "Transfem", "Transmasc", "Agender"]
+      },
+      "False": {
+        "Male": "Cis male",
+        "Female": "Cis female",
+        "Intersex": "Intersex"
+      },
+      "I don't remember": null
+    }
+  },
+  {
+    text: "My internal sense of gender changes.",
+    answers: {
+      "True": "Gender fluid",
+      "False": null
+    }
+  },
+  {
+    id: "expresses_sex",
+    text: "My preferred style/behavior/mannerisms fully match the gender I was assigned at birth.",
+    answers: {
+      "True": {
+        "Male": "Cis male",
+        "Female": "Cis female",
+        "Intersex": "Intersex"
+      },
+      "False": {
+        "Male": ["Non-binary", "Transfem"],
+        "Female": ["Non-binary", "Transmasc"],
+        "Intersex": ["Non-binary", "Transfem", "Transmasc"]
+      },
+      "It varies from time to time": "Gender fluid",
+      "I don't feel like my gender identity influences my style/behavior/mannerisms": "Agender"
+    }
+  },
+  {
+    text: "I consistently use or want to use my style, behavior, and mannerisms to live as the following gender, and doing so feels right for me:",
+    condition: {
+      question_id: "expresses_sex",
+      value: ["False", "It varies from time to time", "I don't feel like my gender identity influences my style/behavior/mannerisms"]
+    },
+    answers: {
+      "Male": {
+        "Male": "Cis male",
+        "Female": "Transmasc",
+        "Intersex": "Transmasc"
+      },
+      "Female": {
+        "Male": "Transfem",
+        "Female": "Cis female",
+        "Intersex": "Transfem"
+      },
+      "Intersex": "Intersex",
+      "It varies from time to time": "Gender fluid",
+      "Neither male nor female": "Non-binary",
+      "I don't feel like I am actively living as a particular gender": "Agender",
+      "None": "Agender"
+    }
+  },
+  {
+    text: "It often seems to me as if people are oddly insistent on gendering everything whereas I don't see the world as gendered the way they do.",
+    answers: {
+      "True": "Agender",
+      "False": null
+    }
+  },
+  {
+    text: "Throughout my life, I have always felt most connected to this gender identity:",
+    condition: {
+      question_id: "identity_matches_sex",
+      value: ["False", "It varies from time to time", "I don't feel like my gender identity influences my style/behavior/mannerisms"]
+    },
+    answers: {
+      "Male": {
+        "Male": "Cis male",
+        "Female": "Transmasc",
+        "Intersex": "Transmasc"
+      },
+      "Female": {
+        "Male": "Transfem",
+        "Female": "Cis female",
+        "Intersex": "Transfem"
+      },
+      "Intersex": "Intersex",
+      "It varies from time to time": "Gender fluid",
+      "Neither male nor female": "Non-binary",
+      "I don't feel like I have felt connected to any particular gender": "Agender",
+      "None": "Agender"
+    }
+  },
+  {
+    text: "I have not felt the need to give a lot of thought to my gender identity.",
+    answers: {
+      "True": {
+        "Male": ["Cis male", "Agender"],
+        "Female": ["Cis female", "Agender"],
+        "Intersex": ["Intersex", "Agender"]
+      },
+      "False": {
+        "Male": ["Gender fluid", "Non-binary", "Transfem"],
+        "Female": ["Gender fluid", "Non-binary", "Transmasc"],
+        "Intersex": ["Gender fluid", "Non-binary", "Transfem", "Transmasc"]
+      }
+    }
+  },
+  {
+    text: "My gender identity changes over time.",
+    answers: {
+      "True": "Gender fluid",
+      "False": null
+    }
+  },
+  {
+    text: "In order for my physical body to match my gender identity, it would have to look",
+    answers: {
+      "Masculine": {
+        "Male": "Cis male",
+        "Female": "Transmasc",
+        "Intersex": "Transmasc"
+      },
+      "Feminine": {
+        "Male": "Transfem",
+        "Female": "Cis female",
+        "Intersex": "Transfem"
+      },
+      "Intersex": "Intersex",
+      "Neither male nor female": "Non-binary",
+      "Genderless": "Agender",
+      "I don't feel like I have a gender identity": "Agender",
+      "It varies from time to time": "Gender fluid"
+    }
+  },
+  {
+    text: "My preferred pronouns would be",
+    answers: {
+      "He/Him": {
+        "Male": "Cis male",
+        "Female": "Transmasc",
+        "Intersex": "Transmasc"
+      },
+      "She/Her": {
+        "Male": "Transfem",
+        "Female": "Cis female",
+        "Intersex": "Transfem"
+      },
+      "They/Them": ["Intersex", "Non-binary", "Agender", "Gender fluid"],
+      "I don't care what pronouns people use": "Agender",
+      "It varies from time to time": "Gender fluid"
+    }
+  },
+  {
+    text: "I often feel like I have no gender at all.",
+    condition: {
+      question_id: "identity_matches_sex",
+      value: ["False", "It varies from time to time", "I don't feel like my gender identity influences my style/behavior/mannerisms"]
+    },
+    answers: {
+      "True": "Agender",
+      "False": null
+    }
+  }
+];
+
+// Sexual Orientation Test Data
+const sex_orientation_points = {
+  "Asexual": 0,
+  "Androphile": 0,
+  "Gynophile": 0,
+  "Bisexual": 0,
+  "Pansexual": 0
+};
+
+const sex_orientation_questions = [
+  {
+    id: "no_arousal",
+    text: "I don't feel sexual desire or arousal, even in situations where I feel I \"should\".",
+    answers: {
+      "True": "Asexual",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I rarely (or never) experience sexual urges or drives.",
+    answers: {
+      "True": "Asexual",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I feel anxious or uneasy when I am expected to engage in sexual behavior.",
+    answers: {
+      "True": "Asexual",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I find it difficult to relate to media and culture that portrays sex as a universal aspect of human life.",
+    answers: {
+      "True": "Asexual",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    id: "no_sexual_attraction",
+    text: "I generally don't feel sexually attracted to other people, regardless of their gender or appearance.",
+    answers: {
+      "True": "Asexual",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "Even if I am fascinated with a person on account of their looks or personality, I do not wish to actually have sex with them.",
+    answers: {
+      "True": "Asexual",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I wouldn't mind if I never had sex (again).",
+    answers: {
+      "True": "Asexual",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I don't really know what it is like to feel sexual attraction.",
+    answers: {
+      "True": "Asexual",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "Recently, I have wanted to touch intimately and/or be naked in the company of:",
+    answers: {
+      "A male-presenting person": "Androphile",
+      "A female-presenting person": "Gynophile",
+      "Both": "Bisexual",
+      "Neither": "Asexual",
+      "People, regardless of their gender identity": "Pansexual"
+    }
+  },
+  {
+    text: "Fantasized about sexual intercourse with:",
+    answers: {
+      "A male-presenting person": "Androphile",
+      "A female-presenting person": "Gynophile",
+      "Both": "Bisexual",
+      "Neither": "Asexual",
+      "People, regardless of their gender identity": "Pansexual"
+    }
+  },
+  {
+    text: "Found sexually attractive:",
+    condition: {
+      question_id: "no_sexual_attraction",
+      value: "False"
+    },
+    answers: {
+      "A male-presenting person": "Androphile",
+      "A female-presenting person": "Gynophile",
+      "Both": "Bisexual",
+      "Neither": "Asexual",
+      "People, regardless of their gender identity": "Pansexual"
+    }
+  },
+  {
+    text: "Was sexually aroused by:",
+    condition: {
+      question_id: "no_arousal",
+      value: "False"
+    },
+    answers: {
+      "A male-presenting person": "Androphile",
+      "A female-presenting person": "Gynophile",
+      "Both": "Bisexual",
+      "Neither": "Asexual",
+      "People, regardless of their gender identity": "Pansexual"
+    }
+  },
+  {
+    text: "Fantasized about non-sexual petting and/or bodily closeness with:",
+    answers: {
+      "A male-presenting person": "Androphile",
+      "A female-presenting person": "Gynophile",
+      "Both": "Bisexual",
+      "Neither": "Asexual",
+      "People, regardless of their gender identity": "Pansexual"
+    }
+  },
+  {
+    text: "Found myself wanting to have real-life sexual intercourse with:",
+    answers: {
+      "A male-presenting person": "Androphile",
+      "A female-presenting person": "Gynophile",
+      "Both": "Bisexual",
+      "Neither": "Asexual",
+      "People, regardless of their gender identity": "Pansexual"
+    }
+  }
+];
+
+// Romantic Orientation Test Data
+const rom_orientation_points = {
+  "Aromantic": 0,
+  "Androromantic": 0,
+  "Gynoromantic": 0,
+  "Biromantic": 0,
+  "Panromantic": 0,
+  "Lithromantic": 0
+};
+
+const rom_orientation_questions = [
+  {
+    text: "I have difficulty understanding people’s obsession with romantic love and relationships.",
+    answers: {
+      "True": "Aromantic",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I prefer to spend my time with friends or pursuing my own interests rather than seeking out a romantic partner.",
+    answers: {
+      "True": "Aromantic",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I find it difficult to relate to media and culture that portrays romance as a universal aspect of human life.",
+    answers: {
+      "True": "Aromantic",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I don't feel romantically attracted to other people, regardless of their gender or appearance.",
+    answers: {
+      "True": "Aromantic",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "Even if I am fascinated with a person on account of their looks or personality, I do not wish to be in a romantic relationship with them.",
+    answers: {
+      "True": "Aromantic",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I wouldn't mind if I would never be in a romantic relationship (again).",
+    answers: {
+      "True": "Aromantic",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I find it difficult to relate to the intense romantic feelings that others often express.",
+    answers: {
+      "True": "Aromantic",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I don't really know what it's like to feel romantic attraction.",
+    answers: {
+      "True": "Aromantic",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I feel romantic attraction, but do not want it to be reciprocated.",
+    answers: {
+      "True": "Lithromantic",
+      "False": null,
+      "I don't know": null
+    }
+  },
+  {
+    text: "I have felt \"butterflies\" in the presence of:",
+    answers: {
+      "A male-presenting person": "Androromantic",
+      "A female-presenting person": "Gynoromantic",
+      "Both": "Biromantic",
+      "Neither": "Aromantic",
+      "People, regardless of their gender identity": "Panromantic"
+    }
+  },
+  {
+    text: "I have fantasized about a romantic relationship with:",
+    answers: {
+      "A male-presenting person": "Androromantic",
+      "A female-presenting person": "Gynoromantic",
+      "Both": "Biromantic",
+      "Neither": "Aromantic",
+      "People, regardless of their gender identity": "Panromantic"
+    }
+  },
+  {
+    text: "I have had a strong urge/need to spend time with this type of person before:",
+    answers: {
+      "A male-presenting person": "Androromantic",
+      "A female-presenting person": "Gynoromantic",
+      "Both": "Biromantic",
+      "Neither": "Aromantic",
+      "People, regardless of their gender identity": "Panromantic"
+    }
+  },
+  {
+    text: "Because of this type of person, I have had mild insomnia before:",
+    answers: {
+      "A male-presenting person": "Androromantic",
+      "A female-presenting person": "Gynoromantic",
+      "Both": "Biromantic",
+      "Neither": "Aromantic",
+      "People, regardless of their gender identity": "Panromantic"
+    }
+  },
+  {
+    text: "I have had to compulsively think about a person like this before:",
+    answers: {
+      "A male-presenting person": "Androromantic",
+      "A female-presenting person": "Gynoromantic",
+      "Both": "Biromantic",
+      "Neither": "Aromantic",
+      "People, regardless of their gender identity": "Panromantic"
+    }
+  },
+  {
+    text: "Found myself wanting to be in a real-life romantic relationship with:",
+    answers: {
+      "A male-presenting person": "Androromantic",
+      "A female-presenting person": "Gynoromantic",
+      "Both": "Biromantic",
+      "Neither": "Aromantic",
+      "People, regardless of their gender identity": "Panromantic"
+    }
+  }
+];
+
+// Functions to ask about "demi" for sexual and romantic tests.
+function askDemiSex(callback) {
+  clearQuizArea();
+  const area = document.getElementById("quiz-area");
+  const container = document.createElement("div");
+  container.innerHTML = `
+    <p>I only feel sexually attracted to someone after I have built an emotional bond with them.</p>
+    <button class="btn" id="demi-yes">True</button>
+    <button class="btn" id="demi-no">False</button>
+  `;
+  area.appendChild(container);
+  document.getElementById("demi-yes").onclick = () => callback(true);
+  document.getElementById("demi-no").onclick = () => callback(false);
+}
+
+function askDemiRom(callback) {
+  clearQuizArea();
+  const area = document.getElementById("quiz-area");
+  const container = document.createElement("div");
+  container.innerHTML = `
+    <p>I only feel romantically attracted to someone after I have built an emotional bond with them.</p>
+    <button class="btn" id="demi-rom-yes">True</button>
+    <button class="btn" id="demi-rom-no">False</button>
+  `;
+  area.appendChild(container);
+  document.getElementById("demi-rom-yes").onclick = () => callback(true);
+  document.getElementById("demi-rom-no").onclick = () => callback(false);
+}
+
+// ----------------------
+// Test Runner Functions
+// ----------------------
+
+// For each component test, if the result is already saved, simply display it.
+// Otherwise, run the test and then save the result page.
+
+function runGenderTest(callback) {
+  if (finalGender) {
+    document.getElementById("quiz-area").innerHTML = savedGenderResultHTML;
+    if (callback) callback();
+    return;
+  }
+  for (let key in gender_points) { gender_points[key] = 0; }
+  runTest(gender_questions, gender_points, {}, (finalPoints) => {
+    showResults(finalPoints, "gender identity", false, (chosenOutcome, topThree) => {
+      let chosenScore = topThree.find(item => item[0] === chosenOutcome)[1];
+      const resultHTML = renderResults("gender identity", chosenOutcome, chosenScore, topThree, false);
+      savedGenderResultHTML = resultHTML; // save result page
+      finalGender = chosenOutcome;
+      clearQuizArea();
+      document.getElementById("quiz-area").innerHTML = resultHTML;
+      if (callback) callback();
+    });
+  });
+}
+
+function runRomanticTest(callback) {
+  if (finalRomantic) {
+    document.getElementById("quiz-area").innerHTML = savedRomanticResultHTML;
+    if (callback) callback();
+    return;
+  }
+  for (let key in rom_orientation_points) { rom_orientation_points[key] = 0; }
+  runTest(rom_orientation_questions, rom_orientation_points, {}, (finalPoints) => {
+    askDemiRom((demi) => {
+      finalDemiRom = demi;
+      showResults(finalPoints, "romantic orientation", demi, (chosenOutcome, topThree) => {
+        let chosenScore = topThree.find(item => item[0] === chosenOutcome)[1];
+        const resultHTML = renderResults("romantic orientation", chosenOutcome, chosenScore, topThree, demi);
+        savedRomanticResultHTML = resultHTML;
+        finalRomantic = chosenOutcome;
+        clearQuizArea();
+        document.getElementById("quiz-area").innerHTML = resultHTML;
+        if (callback) callback();
+      });
+    });
+  });
+}
+
+function runSexualTest(callback) {
+  if (finalSexual) {
+    document.getElementById("quiz-area").innerHTML = savedSexualResultHTML;
+    if (callback) callback();
+    return;
+  }
+  for (let key in sex_orientation_points) { sex_orientation_points[key] = 0; }
+  runTest(sex_orientation_questions, sex_orientation_points, {}, (finalPoints) => {
+    askDemiSex((demi) => {
+      finalDemiSex = demi;
+      showResults(finalPoints, "sexual orientation", demi, (chosenOutcome, topThree) => {
+        let chosenScore = topThree.find(item => item[0] === chosenOutcome)[1];
+        const resultHTML = renderResults("sexual orientation", chosenOutcome, chosenScore, topThree, demi);
+        savedSexualResultHTML = resultHTML;
+        finalSexual = chosenOutcome;
+        clearQuizArea();
+        document.getElementById("quiz-area").innerHTML = resultHTML;
+        if (callback) callback();
+      });
+    });
+  });
+}
+
+// Full Test Runner: use saved results if available; otherwise run missing tests.
+function runFullTest() {
+  function afterSexual() {
+    interpretFullResult();
+  }
+  function afterRomantic() {
+    if (!finalSexual) {
+      runSexualTest(afterSexual);
+    } else {
+      afterSexual();
+    }
+  }
+  function afterGender() {
+    if (!finalRomantic) {
+      runRomanticTest(afterRomantic);
+    } else {
+      afterRomantic();
+    }
+  }
+  if (!finalGender) {
+    runGenderTest(afterGender);
+  } else {
+    afterGender();
+  }
+}
+
+// Interpret the full result based on the component tests.
+function interpretFullResult() {
+  let interpretedSexual = finalSexual;
+  let interpretedRomantic = finalRomantic;
+  if (finalSexual === "Androphile") {
+    if (["Cis male", "Transmasc"].includes(finalGender)) {
+      interpretedSexual = "Homosexual";
+    } else if (["Cis female", "Transfem"].includes(finalGender)) {
+      interpretedSexual = "Heterosexual";
+    }
+  } else if (finalSexual === "Gynophile") {
+    if (["Cis male", "Transmasc"].includes(finalGender)) {
+      interpretedSexual = "Heterosexual";
+    } else if (["Cis female", "Transfem"].includes(finalGender)) {
+      interpretedSexual = "Homosexual";
+    }
+  }
+  if (finalRomantic === "Androromantic") {
+    if (["Cis male", "Transmasc"].includes(finalGender)) {
+      interpretedRomantic = "Homoromantic";
+    } else if (["Cis female", "Transfem"].includes(finalGender)) {
+      interpretedRomantic = "Heteroromantic";
+    }
+  } else if (finalRomantic === "Gynoromantic") {
+    if (["Cis male", "Transmasc"].includes(finalGender)) {
+      interpretedRomantic = "Heteroromantic";
+    } else if (["Cis female", "Transfem"].includes(finalGender)) {
+      interpretedRomantic = "Homoromantic";
+    }
+  }
+  if (finalDemiSex) {
+    interpretedSexual = "Demi-" + interpretedSexual;
+  }
+  if (finalDemiRom) {
+    interpretedRomantic = "Demi-" + interpretedRomantic;
+  }
+  clearQuizArea();
+  const area = document.getElementById("quiz-area");
+  area.innerHTML = `<h3>Your result is: ${finalGender} ${interpretedRomantic} ${interpretedSexual}</h3>`;
+}
+
+// ----------------------
+// Button Event Listeners (Order: Gender, Romantic, Sexual, Full)
+// ----------------------
+document.getElementById("btn-gender").onclick = () => {
+  clearQuizArea();
+  runGenderTest();
+};
+
+document.getElementById("btn-romantic").onclick = () => {
+  clearQuizArea();
+  runRomanticTest();
+};
+
+document.getElementById("btn-sexual").onclick = () => {
+  clearQuizArea();
+  runSexualTest();
+};
+
+document.getElementById("btn-full").onclick = () => {
+  clearQuizArea();
+  runFullTest();
+};
+</script>
+
+</body>
+</html>
+
