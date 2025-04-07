@@ -49,8 +49,28 @@
     .btn:hover {
       background: #005bb5;
     }
+    /* Progress bar styles */
+    #progress-container {
+      width: 100%;
+      background: #e0e0e0;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      height: 20px;
+    }
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: #0066cc;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
     .question {
       margin-bottom: 20px;
+    }
+    .back-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
     }
     .options button {
       display: block;
@@ -67,7 +87,21 @@
     .options button:hover {
       background: #d5d5d5;
     }
-    .hidden { display: none; }
+    .back-btn {
+      align-self: flex-start;
+      padding: 10px 20px;
+      background: #cc0000;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s;
+      margin-left: 20px;
+      height: 40px;
+    }
+    .back-btn:hover {
+      background: #a30000;
+    }
   </style>
 </head>
 <body>
@@ -83,6 +117,10 @@
     <button class="btn" id="btn-romantic">Romantic Orientation Test</button>
     <button class="btn" id="btn-sexual">Sexual Orientation Test</button>
     <button class="btn" id="btn-full">Full Test</button>
+  </div>
+  <!-- Progress bar container -->
+  <div id="progress-container" class="hidden">
+    <div id="progress-bar"></div>
   </div>
   <div id="quiz-area"></div>
 </div>
@@ -109,6 +147,23 @@ function clearQuizArea() {
   document.getElementById("quiz-area").innerHTML = "";
 }
 
+// Update progress bar based on current question and total questions.
+function updateProgress(current, total) {
+  const progressBar = document.getElementById("progress-bar");
+  const percent = Math.round((current / total) * 100);
+  progressBar.style.width = percent + "%";
+}
+
+// Show or hide the progress bar.
+function setProgressVisibility(visible) {
+  const container = document.getElementById("progress-container");
+  if (visible) {
+    container.classList.remove("hidden");
+  } else {
+    container.classList.add("hidden");
+  }
+}
+
 // Formats results as:
 // "Your [test] result is: [result] (n points)"
 // "Other matches: [Orientation] (n points)"
@@ -129,19 +184,39 @@ function renderResults(testLabel, chosenOutcome, chosenPoints, topThree, demi) {
 // Core Quiz Engine (Common for all tests)
 // ----------------------
 
-// Processes a test given an array of questions, a points object, and extraData.
+// runTest now supports a "Back" button and a progress bar.
+// It maintains a history array to allow going back and subtracting points.
 function runTest(questions, points, extraData, callback) {
   let currentQuestionIndex = 0;
   let answersGiven = {};
   let userSex = extraData.userSex || null; // used for gender test
+  let history = [];
+  setProgressVisibility(true);
+  
+  function goBack() {
+    if (history.length > 0) {
+      let last = history.pop();
+      // Subtract the points that were given for that question.
+      last.contributions.forEach(outcome => {
+        points[outcome] -= 1;
+      });
+      currentQuestionIndex = last.questionIndex;
+      showQuestion();
+    }
+  }
 
   function showQuestion() {
+    // Update progress bar based on question count.
+    updateProgress(currentQuestionIndex, questions.length);
+    
+    // End of test: hide progress bar.
     if (currentQuestionIndex >= questions.length) {
+      setProgressVisibility(false);
       callback(points);
       return;
     }
     const q = questions[currentQuestionIndex];
-    // If a condition exists, check it.
+    // Check condition if exists.
     if (q.condition) {
       const cond = q.condition;
       const prevAnswer = answersGiven[cond.question_id];
@@ -157,6 +232,12 @@ function runTest(questions, points, extraData, callback) {
     const container = document.createElement("div");
     container.classList.add("question");
     container.innerHTML = `<h3>${q.text}</h3>`;
+    
+    // Create a wrapper for options and back button.
+    const wrapper = document.createElement("div");
+    wrapper.classList.add("back-container");
+    
+    // Left side: Options.
     const optionsDiv = document.createElement("div");
     optionsDiv.classList.add("options");
     const options = Object.keys(q.answers);
@@ -178,17 +259,42 @@ function runTest(questions, points, extraData, callback) {
         } else {
           resolved = target;
         }
+        let contributions = [];
         if (Array.isArray(resolved)) {
-          resolved.forEach(outcome => { points[outcome] += 1; });
+          resolved.forEach(outcome => {
+            points[outcome] += 1;
+            contributions.push(outcome);
+          });
         } else if (typeof resolved === "string") {
           points[resolved] += 1;
+          contributions.push(resolved);
         }
+        // Save answer and contributions to history.
+        history.push({
+          questionIndex: currentQuestionIndex,
+          contributions: contributions,
+          question: q,
+          answer: optionText
+        });
         currentQuestionIndex++;
         showQuestion();
       };
       optionsDiv.appendChild(btn);
     });
-    container.appendChild(optionsDiv);
+    wrapper.appendChild(optionsDiv);
+    
+    // Right side: Back button (if not the first question).
+    const backDiv = document.createElement("div");
+    if (currentQuestionIndex > 0) {
+      const backBtn = document.createElement("button");
+      backBtn.classList.add("back-btn");
+      backBtn.textContent = "Back";
+      backBtn.onclick = goBack;
+      backDiv.appendChild(backBtn);
+    }
+    wrapper.appendChild(backDiv);
+    
+    container.appendChild(wrapper);
     area.appendChild(container);
   }
   showQuestion();
@@ -268,10 +374,23 @@ const gender_questions = [
     }
   },
   {
-    text: "I don't want to express my gender identity in ways that highlight the gender stereotypes in our society.",
+    text: "I want to express myself in ways that highlight the gender stereotypes of the following gender:",
     answers: {
-      "True": ["Non-binary", "Agender"],
-      "False": null
+      "Male": {
+        "Male": "Cis male",
+        "Female": "Transmasc",
+        "Intersex": "Transmasc",
+      },
+      "Female": {
+        "Male": "Transfem",
+        "Female": "Cis female",
+        "Intersex": "Transfem",
+      },
+      "Intersex": "Intersex",
+      "It varies from time to time": "Gender fluid",
+      "Neither male nor female": "Non-binary",
+      "I don't feel the need to express myself in a way that highlights any gender stereotypes": "Agender",
+      "None": "Agender",
     }
   },
   {
@@ -397,7 +516,7 @@ const gender_questions = [
     }
   },
   {
-    text: "In order for my physical body to match my gender identity, it would have to look",
+    text: "If I could choose, I would like to have a physical body that looks typically:",
     answers: {
       "Masculine": {
         "Male": "Cis male",
@@ -412,7 +531,8 @@ const gender_questions = [
       "Intersex": "Intersex",
       "Neither male nor female": "Non-binary",
       "Genderless": "Agender",
-      "I don't feel like I have a gender identity": "Agender",
+      "I don't care what gender my body looks like": ["Non-binary", "Agender"],
+      "I don't feel like my body would match my gender identity, regardless": ["Non-binary", "Agender"],
       "It varies from time to time": "Gender fluid"
     }
   },
@@ -528,23 +648,23 @@ const sex_orientation_questions = [
     answers: {
       "A male-presenting person": "Androphile",
       "A female-presenting person": "Gynophile",
-      "Both": "Bisexual",
-      "Neither": "Asexual",
+      "People of more than one gender identity": "Bisexual",
+      "No one": "Asexual",
       "People, regardless of their gender identity": "Pansexual"
     }
   },
   {
-    text: "Fantasized about sexual intercourse with:",
+    text: "I have fantasized about sexual intercourse with:",
     answers: {
       "A male-presenting person": "Androphile",
       "A female-presenting person": "Gynophile",
-      "Both": "Bisexual",
-      "Neither": "Asexual",
+      "People of more than one gender identity": "Bisexual",
+      "No one": "Asexual",
       "People, regardless of their gender identity": "Pansexual"
     }
   },
   {
-    text: "Found sexually attractive:",
+    text: "I have found sexually attractive:",
     condition: {
       question_id: "no_sexual_attraction",
       value: "False"
@@ -552,13 +672,13 @@ const sex_orientation_questions = [
     answers: {
       "A male-presenting person": "Androphile",
       "A female-presenting person": "Gynophile",
-      "Both": "Bisexual",
-      "Neither": "Asexual",
+      "People of more than one gender identity": "Bisexual",
+      "No one": "Asexual",
       "People, regardless of their gender identity": "Pansexual"
     }
   },
   {
-    text: "Was sexually aroused by:",
+    text: "I have been sexually aroused by:",
     condition: {
       question_id: "no_arousal",
       value: "False"
@@ -566,28 +686,28 @@ const sex_orientation_questions = [
     answers: {
       "A male-presenting person": "Androphile",
       "A female-presenting person": "Gynophile",
-      "Both": "Bisexual",
-      "Neither": "Asexual",
+      "People of more than one gender identity": "Bisexual",
+      "No one": "Asexual",
       "People, regardless of their gender identity": "Pansexual"
     }
   },
   {
-    text: "Fantasized about non-sexual petting and/or bodily closeness with:",
+    text: "I have fantasized about non-sexual petting and/or bodily closeness with:",
     answers: {
       "A male-presenting person": "Androphile",
       "A female-presenting person": "Gynophile",
-      "Both": "Bisexual",
-      "Neither": "Asexual",
+      "People of more than one gender identity": "Bisexual",
+      "No one": "Asexual",
       "People, regardless of their gender identity": "Pansexual"
     }
   },
   {
-    text: "Found myself wanting to have real-life sexual intercourse with:",
+    text: "I have found myself wanting to have real-life sexual intercourse with:",
     answers: {
       "A male-presenting person": "Androphile",
       "A female-presenting person": "Gynophile",
-      "Both": "Bisexual",
-      "Neither": "Asexual",
+      "People of more than one gender identity": "Bisexual",
+      "No one": "Asexual",
       "People, regardless of their gender identity": "Pansexual"
     }
   }
@@ -681,8 +801,8 @@ const rom_orientation_questions = [
     answers: {
       "A male-presenting person": "Androromantic",
       "A female-presenting person": "Gynoromantic",
-      "Both": "Biromantic",
-      "Neither": "Aromantic",
+      "People of more than one gender identity": "Biromantic",
+      "No one": "Aromantic",
       "People, regardless of their gender identity": "Panromantic"
     }
   },
@@ -691,48 +811,48 @@ const rom_orientation_questions = [
     answers: {
       "A male-presenting person": "Androromantic",
       "A female-presenting person": "Gynoromantic",
-      "Both": "Biromantic",
-      "Neither": "Aromantic",
+      "People of more than one gender identity": "Biromantic",
+      "No one": "Aromantic",
       "People, regardless of their gender identity": "Panromantic"
     }
   },
   {
-    text: "I have had a strong urge/need to spend time with this type of person before:",
+    text: "I have felt a very strong urge/need to spend time with:",
     answers: {
-      "A male-presenting person": "Androromantic",
-      "A female-presenting person": "Gynoromantic",
-      "Both": "Biromantic",
-      "Neither": "Aromantic",
-      "People, regardless of their gender identity": "Panromantic"
+      "A male-presenting person before": "Androromantic",
+      "A female-presenting person before": "Gynoromantic",
+      "People of more than one gender identity before": "Biromantic",
+      "No one": "Aromantic",
+      "People, regardless of their gender identity before": "Panromantic"
     }
   },
   {
-    text: "Because of this type of person, I have had mild insomnia before:",
+    text: "I have had mild insomnia because of:",
     answers: {
-      "A male-presenting person": "Androromantic",
-      "A female-presenting person": "Gynoromantic",
-      "Both": "Biromantic",
-      "Neither": "Aromantic",
-      "People, regardless of their gender identity": "Panromantic"
+      "A male-presenting person before": "Androromantic",
+      "A female-presenting person before": "Gynoromantic",
+      "People of more than one gender identity before": "Biromantic",
+      "No one": "Aromantic",
+      "People, regardless of their gender identity before": "Panromantic"
     }
   },
   {
-    text: "I have had to compulsively think about a person like this before:",
+    text: "I have had to compulsively think about:",
     answers: {
-      "A male-presenting person": "Androromantic",
-      "A female-presenting person": "Gynoromantic",
-      "Both": "Biromantic",
-      "Neither": "Aromantic",
-      "People, regardless of their gender identity": "Panromantic"
+      "A male-presenting person before": "Androromantic",
+      "A female-presenting person before": "Gynoromantic",
+      "People of more than one gender identity before": "Biromantic",
+      "No one": "Aromantic",
+      "People, regardless of their gender identity before": "Panromantic"
     }
   },
   {
-    text: "Found myself wanting to be in a real-life romantic relationship with:",
+    text: "I have found myself wanting to be in a real-life romantic relationship with:",
     answers: {
       "A male-presenting person": "Androromantic",
       "A female-presenting person": "Gynoromantic",
-      "Both": "Biromantic",
-      "Neither": "Aromantic",
+      "People of more than one gender identity": "Biromantic",
+      "No one": "Aromantic",
       "People, regardless of their gender identity": "Panromantic"
     }
   }
@@ -771,9 +891,7 @@ function askDemiRom(callback) {
 // Test Runner Functions
 // ----------------------
 
-// For each component test, if the result is already saved, simply display it.
-// Otherwise, run the test and then save the result page.
-
+// For each component test, if the result is already saved, display the saved result.
 function runGenderTest(callback) {
   if (finalGender) {
     document.getElementById("quiz-area").innerHTML = savedGenderResultHTML;
@@ -785,7 +903,7 @@ function runGenderTest(callback) {
     showResults(finalPoints, "gender identity", false, (chosenOutcome, topThree) => {
       let chosenScore = topThree.find(item => item[0] === chosenOutcome)[1];
       const resultHTML = renderResults("gender identity", chosenOutcome, chosenScore, topThree, false);
-      savedGenderResultHTML = resultHTML; // save result page
+      savedGenderResultHTML = resultHTML;
       finalGender = chosenOutcome;
       clearQuizArea();
       document.getElementById("quiz-area").innerHTML = resultHTML;
@@ -840,7 +958,7 @@ function runSexualTest(callback) {
   });
 }
 
-// Full Test Runner: use saved results if available; otherwise run missing tests.
+// Full Test Runner: run missing tests and then interpret full result.
 function runFullTest() {
   function afterSexual() {
     interpretFullResult();
@@ -866,7 +984,7 @@ function runFullTest() {
   }
 }
 
-// Interpret the full result based on the component tests.
+// Interpret full result based on component test results.
 function interpretFullResult() {
   let interpretedSexual = finalSexual;
   let interpretedRomantic = finalRomantic;
@@ -933,4 +1051,3 @@ document.getElementById("btn-full").onclick = () => {
 
 </body>
 </html>
-
