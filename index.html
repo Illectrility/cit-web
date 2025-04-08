@@ -377,7 +377,7 @@ function breakTie(sortedOutcomes, label, demi, callback) {
   const area = document.getElementById("quiz-area");
   const container = document.createElement("div");
   container.innerHTML = `<h3>There's a tie for the top spot in the ${label} test.</h3>
-    <p>Please choose which one should be number 1:</p>`;
+    <p>Please choose which resonates more with you:</p>`;
   [0, 1].forEach(i => {
     const outcome = sortedOutcomes[i][0];
     const score = sortedOutcomes[i][1];
