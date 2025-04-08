@@ -49,7 +49,7 @@
     .btn:hover {
       background: #005bb5;
     }
-    /* Progress bar styles */
+    /* Progress Bar Styles */
     #progress-container {
       width: 100%;
       background: #e0e0e0;
@@ -64,6 +64,7 @@
       border-radius: 4px;
       transition: width 0.3s ease;
     }
+    .hidden { display: none; }
     .question {
       margin-bottom: 20px;
     }
@@ -126,35 +127,73 @@
 </div>
 
 <script>
-// ----------------------
-// Global Variables to Save Results
-// ----------------------
+// ==================================================
+// 1. Wiki Link Dictionaries (Customize as needed)
+// ==================================================
+const genderLinks = {
+  "Cis male": "https://en.wikipedia.org/wiki/Cisgender",
+  "Cis female": "https://en.wikipedia.org/wiki/Cisgender",
+  "Gender fluid": "https://en.wikipedia.org/wiki/Genderfluid",
+  "Non-binary": "https://en.wikipedia.org/wiki/Non-binary_gender",
+  "Transfem": "https://lgbtqia.fandom.com/wiki/Transfeminine",
+  "Transmasc": "https://lgbtqia.fandom.com/wiki/Transmasculine",
+  "Intersex": "https://en.wikipedia.org/wiki/Intersex",
+  "Agender": "https://en.wikipedia.org/wiki/Agender"
+};
+
+const sexualLinks = {
+  "Asexual": "https://en.wikipedia.org/wiki/Asexuality",
+  "Aceflux": "https://lgbtqia.wiki/wiki/Aceflux",
+  "Gray asexual": "https://en.wikipedia.org/wiki/Gray_asexuality",
+  "Androphile": "https://en.wikipedia.org/wiki/Androphilia_and_gynephilia",
+  "Gynophile": "https://en.wikipedia.org/wiki/Androphilia_and_gynephilia",
+  "Bisexual": "https://en.wikipedia.org/wiki/Bisexuality",
+  "Pansexual": "https://en.wikipedia.org/wiki/Pansexuality",
+  "Homosexual": "https://en.wikipedia.org/wiki/Homosexuality",
+  "Heterosexual": "https://en.wikipedia.org/wiki/Heterosexuality"
+};
+
+const romanticLinks = {
+  "Aromantic": "https://en.wikipedia.org/wiki/Aromanticism",
+  "Aroflux": "https://lgbtqia.wiki/wiki/Aroflux",
+  "Greyromantic": "https://lgbtqia.wiki/wiki/Greyromantic",
+  "Androromantic": "https://lgbtqia.wiki/wiki/Androromantic",
+  "Gynoromantic": "https://lgbtqia.wiki/wiki/Gyneromantic",
+  "Biromantic": "https://lgbtqia.wiki/wiki/Biromantic",
+  "Panromantic": "https://lgbtqia.wiki/wiki/Panromantic",
+  "Homoromantic": "https://lgbtqia.wiki/wiki/Homoromantic",
+  "Heteroromantic": "https://lgbtqia.wiki/wiki/Heteroromantic"
+};
+
+const demiSexLink = "https://en.wikipedia.org/wiki/Demisexuality";
+const demiRomLink = "https://lgbtqia.wiki/wiki/Demiromantic";
+
+// ==================================================
+// 2. Global Variables to Save Results & Result Links
+// ==================================================
 let finalGender = "";
 let finalSexual = "";
 let finalRomantic = "";
 let finalDemiSex = false;
 let finalDemiRom = false;
 
-// Save result HTML for each component test
 let savedGenderResultHTML = "";
 let savedRomanticResultHTML = "";
 let savedSexualResultHTML = "";
 
-// ----------------------
-// Utility Functions
-// ----------------------
+// ==================================================
+// 3. Utility Functions
+// ==================================================
 function clearQuizArea() {
   document.getElementById("quiz-area").innerHTML = "";
 }
 
-// Update progress bar based on current question and total questions.
 function updateProgress(current, total) {
   const progressBar = document.getElementById("progress-bar");
   const percent = Math.round((current / total) * 100);
   progressBar.style.width = percent + "%";
 }
 
-// Show or hide the progress bar.
 function setProgressVisibility(visible) {
   const container = document.getElementById("progress-container");
   if (visible) {
@@ -164,39 +203,77 @@ function setProgressVisibility(visible) {
   }
 }
 
-// Formats results as:
-// "Your [test] result is: [result] (n points)"
-// "Other matches: [Orientation] (n points)"
+// -------------------------------------------------
+// Modified hyperlinkResult for demi separation
+// -------------------------------------------------
+function hyperlinkResult(result, testType, demi) {
+  if(demi && (testType === "sexual" || testType === "romantic")) {
+    // Return two separate links: one for "Demi" and one for the main result, with a hyphen between.
+    let demiLink = "";
+    let mainLink = "";
+    if(testType === "sexual") {
+      demiLink = `<a href="${demiSexLink}" target="_blank">Demi</a>`;
+      mainLink = `<a href="${sexualLinks[result] || "#"}" target="_blank">${result}</a>`;
+    } else if(testType === "romantic") {
+      demiLink = `<a href="${demiRomLink}" target="_blank">Demi</a>`;
+      mainLink = `<a href="${romanticLinks[result] || "#"}" target="_blank">${result}</a>`;
+    }
+    return demiLink + "-" + mainLink;
+  } else {
+    if(testType === "gender") {
+      return `<a href="${genderLinks[result] || "#"}" target="_blank">${result}</a>`;
+    } else if(testType === "sexual") {
+      return `<a href="${sexualLinks[result] || "#"}" target="_blank">${result}</a>`;
+    } else if(testType === "romantic") {
+      return `<a href="${romanticLinks[result] || "#"}" target="_blank">${result}</a>`;
+    }
+  }
+}
+
+// Render results for component tests.
 function renderResults(testLabel, chosenOutcome, chosenPoints, topThree, demi) {
-  let html = `<h3>Your ${testLabel} result is: ${demi ? "Demi-" : ""}${chosenOutcome} (${chosenPoints} points)</h3>`;
+  let outcomeLink = "";
+  if(testLabel === "gender identity") {
+    outcomeLink = hyperlinkResult(chosenOutcome, "gender", false);
+  } else if(testLabel === "sexual orientation") {
+    outcomeLink = hyperlinkResult(chosenOutcome, "sexual", demi);
+  } else if(testLabel === "romantic orientation") {
+    outcomeLink = hyperlinkResult(chosenOutcome, "romantic", demi);
+  }
+  
+  let html = `<h3>Your ${testLabel} result is: ${outcomeLink} (${chosenPoints} points)</h3>`;
   let others = topThree.slice(1).filter(item => item[1] >= 1);
   if (others.length > 0) {
     html += `<p>Other matches:<br>`;
     others.forEach(item => {
-      html += `${demi ? "Demi-" : ""}${item[0]} (${item[1]} points)<br>`;
+      let otherLink = "";
+      if(testLabel === "gender identity") {
+        otherLink = hyperlinkResult(item[0], "gender", false);
+      } else if(testLabel === "sexual orientation") {
+        otherLink = hyperlinkResult(item[0], "sexual", demi);
+      } else if(testLabel === "romantic orientation") {
+        otherLink = hyperlinkResult(item[0], "romantic", demi);
+      }
+      html += `${otherLink} (${item[1]} points)<br>`;
     });
     html += `</p>`;
   }
   return html;
 }
 
-// ----------------------
-// Core Quiz Engine (Common for all tests)
-// ----------------------
-
-// runTest now supports a "Back" button and a progress bar.
-// It maintains a history array to allow going back and subtracting points.
+// ==================================================
+// 4. Core Quiz Engine with Back Button & Progress Bar
+// ==================================================
 function runTest(questions, points, extraData, callback) {
   let currentQuestionIndex = 0;
   let answersGiven = {};
-  let userSex = extraData.userSex || null; // used for gender test
+  let userSex = extraData.userSex || null;
   let history = [];
   setProgressVisibility(true);
   
   function goBack() {
     if (history.length > 0) {
       let last = history.pop();
-      // Subtract the points that were given for that question.
       last.contributions.forEach(outcome => {
         points[outcome] -= 1;
       });
@@ -204,19 +281,15 @@ function runTest(questions, points, extraData, callback) {
       showQuestion();
     }
   }
-
+  
   function showQuestion() {
-    // Update progress bar based on question count.
     updateProgress(currentQuestionIndex, questions.length);
-    
-    // End of test: hide progress bar.
     if (currentQuestionIndex >= questions.length) {
       setProgressVisibility(false);
       callback(points);
       return;
     }
     const q = questions[currentQuestionIndex];
-    // Check condition if exists.
     if (q.condition) {
       const cond = q.condition;
       const prevAnswer = answersGiven[cond.question_id];
@@ -233,11 +306,9 @@ function runTest(questions, points, extraData, callback) {
     container.classList.add("question");
     container.innerHTML = `<h3>${q.text}</h3>`;
     
-    // Create a wrapper for options and back button.
     const wrapper = document.createElement("div");
     wrapper.classList.add("back-container");
     
-    // Left side: Options.
     const optionsDiv = document.createElement("div");
     optionsDiv.classList.add("options");
     const options = Object.keys(q.answers);
@@ -269,7 +340,6 @@ function runTest(questions, points, extraData, callback) {
           points[resolved] += 1;
           contributions.push(resolved);
         }
-        // Save answer and contributions to history.
         history.push({
           questionIndex: currentQuestionIndex,
           contributions: contributions,
@@ -283,7 +353,6 @@ function runTest(questions, points, extraData, callback) {
     });
     wrapper.appendChild(optionsDiv);
     
-    // Right side: Back button (if not the first question).
     const backDiv = document.createElement("div");
     if (currentQuestionIndex > 0) {
       const backBtn = document.createElement("button");
@@ -300,7 +369,9 @@ function runTest(questions, points, extraData, callback) {
   showQuestion();
 }
 
-// Tie-breaker: if the top two outcomes are tied, let the user choose.
+// ==================================================
+// 5. Tie-Breaker & Results Display
+// ==================================================
 function breakTie(sortedOutcomes, label, demi, callback) {
   clearQuizArea();
   const area = document.getElementById("quiz-area");
@@ -318,7 +389,6 @@ function breakTie(sortedOutcomes, label, demi, callback) {
   area.appendChild(container);
 }
 
-// Displays top three outcomes (with tie-breaker if necessary) before final callback.
 function showResults(points, label, demi, callback) {
   let sortedOutcomes = Object.entries(points).sort((a, b) => b[1] - a[1]);
   const topThree = sortedOutcomes.slice(0, 3);
@@ -331,9 +401,11 @@ function showResults(points, label, demi, callback) {
   }
 }
 
-// ----------------------
-// Test Data for Each Component
-// ----------------------
+// ==================================================
+// 6. Test Data and Questions
+// ==================================================
+
+// Paste your current questions for each test below:
 
 // Gender Identity Test Data
 const gender_points = {
@@ -463,7 +535,7 @@ const gender_questions = [
       "Intersex": "Intersex",
       "It varies from time to time": "Gender fluid",
       "Neither male nor female": "Non-binary",
-      "I don't feel like I am actively living as a particular gender": "Agender",
+      "I don't feel like I actively (want to) express a particular gender": "Agender",
       "None": "Agender",
       "Skip": null
     }
@@ -752,7 +824,7 @@ const sex_orientation_questions = [
 const rom_orientation_points = {
   "Aromantic": 0,
   "Aroflux": 0,
-  "Gray-romantic": 0,
+  "Greyromantic": 0,
   "Androromantic": 0,
   "Gynoromantic": 0,
   "Biromantic": 0,
@@ -766,7 +838,7 @@ const rom_orientation_questions = [
     answers: {
       
       "True": "Aromantic",
-      "Mostly true": "Gray-romantic",
+      "Mostly true": "Greyromantic",
       "Mostly false": null,
       "False": null,
       "I don't know": null,
@@ -778,7 +850,7 @@ const rom_orientation_questions = [
     answers: {
       
       "True": "Aromantic",
-      "Mostly true": "Gray-romantic",
+      "Mostly true": "Greyromantic",
       "Mostly false": null,
       "False": null,
       "I don't know": null,
@@ -790,7 +862,7 @@ const rom_orientation_questions = [
     answers: {
       
       "True": "Aromantic",
-      "Mostly true": "Gray-romantic",
+      "Mostly true": "Greyromantic",
       "Mostly false": null,
       "False": null,
       "I don't know": null,
@@ -802,7 +874,7 @@ const rom_orientation_questions = [
     answers: {
       
       "True": "Aromantic",
-      "Mostly true": "Gray-romantic",
+      "Mostly true": "Greyromantic",
       "Mostly false": null,
       "False": null,
       "I don't know": null,
@@ -814,7 +886,7 @@ const rom_orientation_questions = [
     answers: {
       
       "True": "Aromantic",
-      "Mostly true": "Gray-romantic",
+      "Mostly true": "Greyromantic",
       "Mostly false": null,
       "False": null,
       "I don't know": null,
@@ -826,7 +898,7 @@ const rom_orientation_questions = [
     answers: {
       
       "True": "Aromantic",
-      "Mostly true": "Gray-romantic",
+      "Mostly true": "Greyromantic",
       "Mostly false": null,
       "False": null,
       "I don't know": null,
@@ -838,7 +910,7 @@ const rom_orientation_questions = [
     answers: {
       
       "True": "Aromantic",
-      "Mostly true": "Gray-romantic",
+      "Mostly true": "Greyromantic",
       "Mostly false": null,
       "False": null,
       "I don't know": null,
@@ -850,7 +922,7 @@ const rom_orientation_questions = [
     answers: {
       
       "True": "Aromantic",
-      "Mostly true": "Gray-romantic",
+      "Mostly true": "Greyromantic",
       "Mostly false": null,
       "False": null,
       "I don't know": null,
@@ -933,7 +1005,9 @@ const rom_orientation_questions = [
   }
 ];
 
-// Functions to ask about "demi" for sexual and romantic tests.
+// ==================================================
+// 7. Functions to Ask for 'Demi' Preferences
+// ==================================================
 function askDemiSex(callback) {
   clearQuizArea();
   const area = document.getElementById("quiz-area");
@@ -962,11 +1036,9 @@ function askDemiRom(callback) {
   document.getElementById("demi-rom-no").onclick = () => callback(false);
 }
 
-// ----------------------
-// Test Runner Functions
-// ----------------------
-
-// For each component test, if the result is already saved, display the saved result.
+// ==================================================
+// 8. Test Runner Functions
+// ==================================================
 function runGenderTest(callback) {
   if (finalGender) {
     document.getElementById("quiz-area").innerHTML = savedGenderResultHTML;
@@ -1033,7 +1105,6 @@ function runSexualTest(callback) {
   });
 }
 
-// Full Test Runner: run missing tests and then interpret full result.
 function runFullTest() {
   function afterSexual() {
     interpretFullResult();
@@ -1059,7 +1130,9 @@ function runFullTest() {
   }
 }
 
-// Interpret full result based on component test results.
+// ==================================================
+// 9. Full Test Interpretation
+// ==================================================
 function interpretFullResult() {
   let interpretedSexual = finalSexual;
   let interpretedRomantic = finalRomantic;
@@ -1089,20 +1162,19 @@ function interpretFullResult() {
       interpretedRomantic = "Homoromantic";
     }
   }
-  if (finalDemiSex) {
-    interpretedSexual = "Demi-" + interpretedSexual;
-  }
-  if (finalDemiRom) {
-    interpretedRomantic = "Demi-" + interpretedRomantic;
-  }
+  // For full test, we do not add the "Demi" string into the orientation result.
+  // Instead, when rendering full result, the outcome will be shown as two separate links if appropriate.
+  const finalGenderLink = hyperlinkResult(finalGender, "gender", false);
+  const finalSexualLink = hyperlinkResult(interpretedSexual, "sexual", finalDemiSex);
+  const finalRomanticLink = hyperlinkResult(interpretedRomantic, "romantic", finalDemiRom);
   clearQuizArea();
   const area = document.getElementById("quiz-area");
-  area.innerHTML = `<h3>Your result is: ${finalGender} ${interpretedRomantic} ${interpretedSexual}</h3>`;
+  area.innerHTML = `<h3>Your result is: ${finalGenderLink} ${finalRomanticLink} ${finalSexualLink}</h3>`;
 }
 
-// ----------------------
-// Button Event Listeners (Order: Gender, Romantic, Sexual, Full)
-// ----------------------
+// ==================================================
+// 10. Button Event Listeners (Order: Gender, Romantic, Sexual, Full)
+// ==================================================
 document.getElementById("btn-gender").onclick = () => {
   clearQuizArea();
   runGenderTest();
